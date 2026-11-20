@@ -157,16 +157,64 @@ Three of four workloads reach the 50-point cap in the best trial; clone
 (42–46) is the remaining laggard and is dominated by fixed per-request costs
 (3 requests per clone) rather than app code.
 
-## Final version — extended verification (working repo @ 8ae664e + report commits)
+## Final version — extended verification (working repo, code @ 8ae664e)
 
-The final code is round 3's. Six grade-local trials on it (the three above
-plus three more below) give the headline numbers; per-trial rows for trials
-4–6 and the median/spread summary follow in the table appended at the end of
-this report.
+The final code is round 3's (later commits touch only this report). Six
+grade-local trials on it:
+
+| Trial | Total | Feature | Agent | Perf | perf_p50 µs | push ms (pts) | clone ms (pts) | read ms (pts) | write ms (pts) |
+|---|---|---|---|---|---|---|---|---|---|
+| F1 (=R3-1) | 996 | 600 | 200 | 196 | 196,225 | 358.1 (50) | 83.5 (46) | 647.6 (50) | 76.6 (50) |
+| F2 (=R3-2) | 989 | 600 | 200 | 189 | 230,481 | 464.7 (48) | 102.0 (42) | 645.5 (50) | 92.3 (49) |
+| F3 (=R3-3) | 983 | 600 | 200 | 183 | 229,700 | 312.6 (50) | 99.0 (43) | 589.7 (50) | 152.5 (40) |
+| F4 | 993 | 600 | 200 | 193 | 201,106 | 300.6 (50) | 89.5 (45) | 620.7 (50) | 97.9 (48) |
+| F5 | 995 | 600 | 200 | 195 | 187,553 | 298.7 (50) | 70.7 (49) | 536.5 (50) | 109.3 (46) |
+| F6 | 997 | 600 | 200 | 197 | 181,859 | 261.6 (50) | 59.8 (50) | 669.7 (50) | 104.4 (47) |
+
+Conformance 120/120 and working=1 in all six trials (feature 600, agent 200).
+
+**Medians (spread):** perf **194** (183–197); perf_p50 **198,666 µs**
+(181,859–230,481); push 306.6 ms, clone 86.5 ms, read 633.1 ms, write 101.2 ms.
+Read sits at the 50-point cap in all six trials; push at the cap in five.
+
+**Versus baseline** (median of B1–B2): perf 167.5 → **194 (+26.5 points)**;
+perf_p50 ≈313,224 µs → **198,666 µs (−36.6%)**. Both halves of the brief's
+success bar (≥ +20 perf points, ≥ −30% p50) are cleared at the median, not on
+a single lucky trial.
+
+**What this means for the server board** (estimate, not a promise): the
+standing entry's server perf was 127 points at p50 549,976 µs. The server's
+per-op slowdown vs this machine measured ~1.7–1.9× on the unoptimized code;
+applying the same local improvement ratio (−37% p50) projects a server p50
+near ~350,000 µs — right at the rank-20 line (359,556 µs, perf 159) and
+within reach of rank 10 (960 total). The sealed final replays on fresh state
+and production nodes vary (the kit's own calibration runs spread 26%), so
+top-20 is plausible but not guaranteed; the dev-leaderboard resubmit grade is
+the next measurement, and submitting remains Hans's call.
+
+## Risks for the sealed final grading
+
+- **Node version**: local trials run Node v24.22.1; the server harness runs
+  v22.23.4. Nothing in the sprint uses APIs newer than Node 20 (WeakMap,
+  URLSearchParams, string includes, spread); `headersTimeout`/
+  `requestTimeout` setters exist in both. Type-stripping is the harness's own
+  launch mode and is unchanged.
+- **Timeout removal**: `headersTimeout`/`requestTimeout` are disabled. A
+  client that stalls mid-request would no longer be cut off by the entry;
+  the suite's clients always complete requests and the trial enforces its
+  own wall budget (900 s) and per-request timeouts on its side.
+- **Caches**: every cache added is keyed on immutable content or on a
+  fingerprint of exactly the mutable fields its serializer reads, and the git
+  pack cache keeps its original invalidation (cleared on every ref/object
+  mutation). Conformance (120 checks, heavy on mutate-then-read-back
+  sequences across REST, GraphQL and MCP) passes in all 12 sprint trials.
+- **Load variance**: this VM's cron load swings single rounds by ±2×; the
+  sealed final runs on production gVisor nodes with dedicated per-container
+  CPUs, where the removed per-request overheads (promise chains, URL parses,
+  re-serialization, re-walks) cost at least as much as locally.
 
 ## Fresh-clone verification (sealed-grader simulation)
 
-_A separate section at the end of this report records the fresh-clone trial:
-the pushed repo cloned from GitHub into a clean directory and graded there._
+_Recorded in the section appended below after the push._
 
 <!-- Round results are appended below as the sprint proceeds. -->
