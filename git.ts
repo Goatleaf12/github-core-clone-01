@@ -17,7 +17,7 @@
 //  - A malformed pkt-line request must never crash the server: answer 400.
 
 import { ForgeError, type Forge, type Repo } from './store.ts';
-import { ZERO_OID } from './util.ts';
+import { ZERO_OID, decodeSegment } from './util.ts';
 
 export interface HttpContext {
   method: string;
@@ -66,12 +66,17 @@ function pktLineBytes(payload: Buffer): Buffer {
   return Buffer.concat([header, payload]);
 }
 
+/** Control packets are constant bytes; they are only ever read (concatenated
+ * into a response), never mutated, so one instance serves every response. */
+const PKT_FLUSH = Buffer.from('0000', 'ascii');
+const PKT_DELIM = Buffer.from('0001', 'ascii');
+
 function pktFlush(): Buffer {
-  return Buffer.from('0000', 'ascii');
+  return PKT_FLUSH;
 }
 
 function pktDelim(): Buffer {
-  return Buffer.from('0001', 'ascii');
+  return PKT_DELIM;
 }
 
 /** Decode a whole buffer of pkt-lines. Throws ForgeError(400) on bad framing. */
@@ -279,21 +284,38 @@ function handleLsRefs(repo: Repo, lines: string[]): Buffer {
   return Buffer.concat(out);
 }
 
+/** Section headers every fetch reply carries, encoded once. */
+const PKT_ACKNOWLEDGMENTS = pktLine('acknowledgments\n');
+const PKT_NAK = pktLine('NAK\n');
+const PKT_SHALLOW_INFO = pktLine('shallow-info\n');
+const PKT_PACKFILE = pktLine('packfile\n');
+const SIDEBAND_ONE = Buffer.from([1]);
+
+/**
+ * A pack framed as one band-1 sideband packet, in a single copy. Falls back
+ * to the chunked sideband framing when the pack exceeds one packet.
+ */
+function framedPack(pack: Buffer): Buffer {
+  if (pack.length + 5 > 65520) return sideband(1, pack);
+  const header = Buffer.from((pack.length + 5).toString(16).padStart(4, '0'), 'ascii');
+  return Buffer.concat([header, SIDEBAND_ONE, pack]);
+}
+
 function handleFetchV2(forge: Forge, repo: Repo, lines: string[]): Buffer {
   const request = parseFetchLines(lines);
   const { pack, shallow, unshallow } = buildFetchPack(forge, repo, request);
   const parts: Buffer[] = [];
-  parts.push(pktLine('acknowledgments\n'));
-  parts.push(pktLine('NAK\n'));
+  parts.push(PKT_ACKNOWLEDGMENTS);
+  parts.push(PKT_NAK);
   parts.push(pktFlush());
   if (shallow.length > 0 || unshallow.length > 0) {
-    parts.push(pktLine('shallow-info\n'));
+    parts.push(PKT_SHALLOW_INFO);
     for (const oid of shallow) parts.push(pktLine(`shallow ${oid}\n`));
     for (const oid of unshallow) parts.push(pktLine(`unshallow ${oid}\n`));
     parts.push(pktFlush());
   }
-  parts.push(pktLine('packfile\n'));
-  parts.push(sideband(1, pack));
+  parts.push(PKT_PACKFILE);
+  parts.push(framedPack(pack));
   parts.push(pktFlush());
   return Buffer.concat(parts);
 }
@@ -301,10 +323,10 @@ function handleFetchV2(forge: Forge, repo: Repo, lines: string[]): Buffer {
 function handleFetchV0(forge: Forge, repo: Repo, lines: string[]): Buffer {
   const request = parseFetchLines(lines);
   const { pack, shallow, unshallow } = buildFetchPack(forge, repo, request);
-  const parts: Buffer[] = [pktLine('NAK\n')];
+  const parts: Buffer[] = [PKT_NAK];
   for (const oid of shallow) parts.push(pktLine(`shallow ${oid}\n`));
   for (const oid of unshallow) parts.push(pktLine(`unshallow ${oid}\n`));
-  parts.push(sideband(1, pack));
+  parts.push(framedPack(pack));
   parts.push(pktFlush());
   return Buffer.concat(parts);
 }
@@ -442,8 +464,8 @@ const GIT_PATH = /^\/([^/]+)\/([^/]+)\.git(\/.*)?$/;
 export function handleGit(forge: Forge, ctx: HttpContext): HttpResponse {
   const match = GIT_PATH.exec(ctx.pathname);
   if (!match) return jsonResponse(404, { message: 'Not Found' });
-  const owner = decodeURIComponent(match[1]);
-  const repoName = decodeURIComponent(match[2]);
+  const owner = decodeSegment(match[1]);
+  const repoName = decodeSegment(match[2]);
   const suffix = match[3] ?? '';
   const repo = forge.getRepo(owner, repoName);
   if (!repo) return jsonResponse(404, { message: 'Not Found' });

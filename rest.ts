@@ -10,7 +10,7 @@
 
 import { VIEWER, DEFAULT_BRANCH } from './scenario.ts';
 import { Forge, ForgeError, globalId, type Issue, type Label, type Pull, type Repo } from './store.ts';
-import { b64encode, b64decode, trialNowIso } from './util.ts';
+import { b64encode, b64decode, decodeSegment, trialNowIso } from './util.ts';
 import type { HttpContext, HttpResponse } from './git.ts';
 import { jsonResponse } from './git.ts';
 
@@ -299,8 +299,8 @@ export function handleRest(forge: Forge, ctx: HttpContext): HttpResponse {
 
   // /api/v3/repos/{owner}/{repo}...
   if (rest.length >= 3 && rest[0] === 'repos') {
-    const owner = decodeURIComponent(rest[1]);
-    const name = decodeURIComponent(rest[2]);
+    const owner = decodeSegment(rest[1]);
+    const name = decodeSegment(rest[2]);
     const tail = rest.slice(3);
     const repo = requireRepo(forge, owner, name);
 

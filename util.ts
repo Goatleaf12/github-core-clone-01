@@ -70,6 +70,15 @@ export function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+/**
+ * decodeURIComponent for one path segment. A segment without '%' decodes to
+ * itself, so the decoder (and its escape validation) only runs when an
+ * escape is actually present; malformed escapes throw exactly as before.
+ */
+export function decodeSegment(segment: string): string {
+  return segment.includes('%') ? decodeURIComponent(segment) : segment;
+}
+
 /** Split a path like "a/b/c.txt" into its segments, dropping empty ones. */
 export function splitPath(path: string): string[] {
   return path.split('/').filter((part) => part.length > 0);

@@ -119,4 +119,29 @@ themselves (async dispatch chain, URL parsing, per-request response builds).
 - `git.ts`: the protocol-v2 capability advertisement is a fixed byte string;
   build it once at module load instead of per request.
 
+Results (grade-local, committed tree @ 871cd2f):
+
+| Trial | Total | Feature | Agent | Perf | perf_p50 µs | push ms (pts) | clone ms (pts) | read ms (pts) | write ms (pts) |
+|---|---|---|---|---|---|---|---|---|---|
+| R2-1 | 988 | 600 | 200 | 188 | 220,180 | 359.6 (50) | 95.7 (43) | 607.9 (50) | 112.3 (45) |
+| R2-2 | 988 | 600 | 200 | 188 | 212,464 | 313.1 (50) | 100.6 (43) | 567.2 (50) | 114.0 (45) |
+| R2-3 | 973 | 600 | 200 | 173 | 288,295 | 389.7 (50) | 115.2 (40) | 1,150.3 (41) | 133.8 (42) |
+
+Conformance 120/120 in every trial. Median: perf 188 (baseline 167.5, +20.5),
+perf_p50 220,180 µs (baseline ≈313,224, −29.7%). Push and read reach the
+50-point per-workload cap in the quiet trials. The brief's success bar
+(perf ≥ baseline +20 and p50 −30% at the median) is met; the sprint continues
+for clone (40–43) and write (42–45), which still have headroom.
+
+### Round 3 — git framing and segment decoding
+
+- `git.ts`: flush/delim control packets and the fetch section headers
+  (acknowledgments / NAK / shallow-info / packfile) are module-level constant
+  buffers; the fetch pack is framed as one band-1 packet in a single copy
+  (`framedPack`) instead of sideband-concat + pkt-line-concat + final concat
+  (packs above one packet keep the chunked sideband path, byte-identical).
+- `util.ts` + `rest.ts` + `git.ts`: `decodeSegment` — path segments without
+  '%' skip `decodeURIComponent` (it returns such segments unchanged); segments
+  with '%' decode — and throw on malformed escapes — exactly as before.
+
 <!-- Round results are appended below as the sprint proceeds. -->
