@@ -89,6 +89,34 @@ Per-workload medians: push 544.3 ms, clone 133.4 ms, read 1,090.7 ms, write 134.
   `headersTimeout`/`requestTimeout` disabled (suite clients always complete
   their requests; the trial's wall budget is enforced outside the entry).
 
-Results: _pending grade trials_
+Results (grade-local, committed tree @ a24ea36):
+
+| Trial | Total | Feature | Agent | Perf | perf_p50 µs | push ms (pts) | clone ms (pts) | read ms (pts) | write ms (pts) |
+|---|---|---|---|---|---|---|---|---|---|
+| R1-1 | 962 | 600 | 200 | 162 | 340,010 | 527.5 (45) | 98.5 (43) | 1,064.5 (42) | 241.5 (32) |
+| R1-2 | 973 | 600 | 200 | 173 | 295,148 | 539.4 (45) | 116.6 (40) | 925.6 (45) | 130.4 (43) |
+| R1-3 | 973 | 600 | 200 | 173 | 293,934 | 459.4 (48) | 125.3 (39) | 962.5 (44) | 134.7 (42) |
+
+Conformance 120/120 in every trial (git 30, graphql 20, issues 15, mcp 15,
+protocol 5, pulls 20, repos 15), working=1.
+Median: perf 173 (baseline median 167.5), perf_p50 295,148 µs (baseline ≈313,224).
+Verdict: direction right but inside this machine's noise band — the app code
+was only ~13% of server CPU, so round 2 attacks the per-request fixed costs
+themselves (async dispatch chain, URL parsing, per-request response builds).
+
+### Round 2 — per-request fixed costs
+
+- `app.ts`: the request handler no longer wraps every request in an async
+  IIFE. Bodyless requests (the read workload and every git advertisement) are
+  routed and answered synchronously inside the connection callback; requests
+  with a body chain off `readBody`'s promise directly. Same responses, same
+  error mapping (ForgeError → its status JSON, anything else → 500 + log).
+- `app.ts`: URL fast path — when the request target contains no backslash, no
+  dot segment and no `%2e`, WHATWG parsing is the identity for the pathname
+  and the query string parses identically, so the target is split by hand and
+  `URLSearchParams` is built from the raw query; anything else takes the
+  original `new URL` path.
+- `git.ts`: the protocol-v2 capability advertisement is a fixed byte string;
+  build it once at module load instead of per request.
 
 <!-- Round results are appended below as the sprint proceeds. -->

@@ -138,15 +138,18 @@ const UPLOAD_V0_CAPS =
   'symref=HEAD:refs/heads/main agent=forge/1.0 side-band-64k thin-pack ofs-delta multi_ack_detailed shallow';
 const RECEIVE_V0_CAPS = 'report-status delete-refs side-band-64k agent=forge/1.0 ofs-delta thin-pack';
 
+/** The v2 capability advertisement never changes, so it is encoded once. */
+const ADVERTISE_V2 = encodePktLines([
+  'version 2\n',
+  `agent=${AGENT}\n`,
+  'ls-refs=unborn\n',
+  'fetch=shallow\n',
+  'object-format=sha1\n',
+  'flush',
+]);
+
 function advertiseV2(): Buffer {
-  return encodePktLines([
-    'version 2\n',
-    `agent=${AGENT}\n`,
-    'ls-refs=unborn\n',
-    'fetch=shallow\n',
-    'object-format=sha1\n',
-    'flush',
-  ]);
+  return ADVERTISE_V2;
 }
 
 function advertiseV0(repo: Repo, service: 'git-upload-pack' | 'git-receive-pack'): Buffer {
