@@ -213,8 +213,43 @@ the next measurement, and submitting remains Hans's call.
   CPUs, where the removed per-request overheads (promise chains, URL parses,
   re-serialization, re-walks) cost at least as much as locally.
 
-## Fresh-clone verification (sealed-grader simulation)
+## Fresh-clone verification (sealed-grader simulation) — PASSED
 
-_Recorded in the section appended below after the push._
+After the push, the repo was cloned fresh from GitHub
+(`https://github.com/Goatleaf12/github-core-clone-01`) into a clean directory
+(`/tmp/freshclone`, no local state carried over) and graded there.
+
+- Clone HEAD: `b284b8e` — exactly the pushed sha (code `8ae664e` + report
+  commits). Tree complete: all nine `.ts` sources, `package.json`,
+  `tsconfig.json`, README, LICENSE with its SPDX line, and the tracked
+  `.makefun/owner.json`. (`RESULT.md` is absent — it was untracked in the
+  original submission too and plays no part in grading.)
+
+| Trial | Total | Feature | Agent | Perf | perf_p50 µs | push ms (pts) | clone ms (pts) | read ms (pts) | write ms (pts) |
+|---|---|---|---|---|---|---|---|---|---|
+| C1 | 989 | 600 | 200 | 189 | 219,831 | 315.8 (50) | 80.1 (47) | 685.9 (50) | 134.6 (42) |
+| C2 | 989 | 600 | 200 | 189 | 228,323 | 372.8 (50) | 105.7 (42) | 757.4 (48) | 91.1 (49) |
+
+Conformance 120/120 in both clone trials. Both trials land inside the
+working repo's own spread (perf 183–197, p50 181,859–230,481 µs) — the fresh
+clone is **not** materially below the working-repo median (perf 194 /
+198,666 µs); the small p50 gap is the same load noise seen between
+working-repo trials. No missing piece, no fix needed: the pushed tree is
+self-contained and grades identically from a clean checkout.
+
+## Commits
+
+- `a24ea36` — perf round 1 (issue JSON cache, tree parse cache, fetch
+  shallow cache, number index maps, bodyless fast path, timeout removal)
+- `871cd2f` — perf round 2 (synchronous dispatch, URL fast path, static v2
+  advertisement)
+- `8ae664e` — perf round 3 (constant pkt-line framing, single-copy fetch
+  pack, segment decode fast path) ← final code
+- `ee4beba`, `b284b8e` — this report
+- Pushed to `origin/main` (GitHub `Goatleaf12/github-core-clone-01`):
+  `81f3d52..b284b8e`. One further docs-only commit appends this section.
+
+**No submission was made.** The resubmit decision is Hans's, before the
+21 Nov 13:30 WIB deadline.
 
 <!-- Round results are appended below as the sprint proceeds. -->
