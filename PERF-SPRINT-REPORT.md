@@ -144,4 +144,29 @@ for clone (40–43) and write (42–45), which still have headroom.
   '%' skip `decodeURIComponent` (it returns such segments unchanged); segments
   with '%' decode — and throw on malformed escapes — exactly as before.
 
+Results (grade-local, committed tree @ 8ae664e):
+
+| Trial | Total | Feature | Agent | Perf | perf_p50 µs | push ms (pts) | clone ms (pts) | read ms (pts) | write ms (pts) |
+|---|---|---|---|---|---|---|---|---|---|
+| R3-1 | 996 | 600 | 200 | 196 | 196,225 | 358.1 (50) | 83.5 (46) | 647.6 (50) | 76.6 (50) |
+| R3-2 | 989 | 600 | 200 | 189 | 230,481 | 464.7 (48) | 102.0 (42) | 645.5 (50) | 92.3 (49) |
+| R3-3 | 983 | 600 | 200 | 183 | 229,700 | 312.6 (50) | 99.0 (43) | 589.7 (50) | 152.5 (40) |
+
+Conformance 120/120 in every trial. Median: perf 189, perf_p50 229,700 µs.
+Three of four workloads reach the 50-point cap in the best trial; clone
+(42–46) is the remaining laggard and is dominated by fixed per-request costs
+(3 requests per clone) rather than app code.
+
+## Final version — extended verification (working repo @ 8ae664e + report commits)
+
+The final code is round 3's. Six grade-local trials on it (the three above
+plus three more below) give the headline numbers; per-trial rows for trials
+4–6 and the median/spread summary follow in the table appended at the end of
+this report.
+
+## Fresh-clone verification (sealed-grader simulation)
+
+_A separate section at the end of this report records the fresh-clone trial:
+the pushed repo cloned from GitHub into a clean directory and graded there._
+
 <!-- Round results are appended below as the sprint proceeds. -->
