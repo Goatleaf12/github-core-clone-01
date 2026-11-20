@@ -145,6 +145,51 @@ function issueJson(repo: Repo, issue: Issue): Record<string, unknown> {
   };
 }
 
+/**
+ * The serialized bytes of one issue, cached per issue. An issue's JSON
+ * changes only when a field the serializer reads changes, so the cache key is
+ * a fingerprint of exactly those fields (state, title, body, updatedAt,
+ * closedAt, comment count, label ids — every mutation path in rest.ts,
+ * store.ts and graphql.ts moves at least one of them). The bytes come from
+ * the same serializer and the same JSON.stringify, so a cached reply is
+ * byte-identical to a fresh one; the cache only skips rebuilding it.
+ */
+const issueBodyCache = new WeakMap<Issue, { fingerprint: string; body: Buffer }>();
+
+function issueFingerprint(issue: Issue): string {
+  let labels = '';
+  for (const label of issue.labels) labels += `${label.id},`;
+  return [
+    issue.state,
+    issue.title,
+    issue.body,
+    issue.updatedAt,
+    issue.closedAt ?? '',
+    String(issue.comments.length),
+    labels,
+  ].join('\u0000');
+}
+
+function issueBody(repo: Repo, issue: Issue): Buffer {
+  const fingerprint = issueFingerprint(issue);
+  const cached = issueBodyCache.get(issue);
+  if (cached && cached.fingerprint === fingerprint) return cached.body;
+  const body = Buffer.from(JSON.stringify(issueJson(repo, issue)), 'utf8');
+  issueBodyCache.set(issue, { fingerprint, body });
+  return body;
+}
+
+/** A JSON array of issue bodies, byte-identical to stringifying the objects. */
+function issueArrayBody(repo: Repo, issues: Issue[]): Buffer {
+  const parts: Buffer[] = [Buffer.from('[', 'utf8')];
+  issues.forEach((issue, index) => {
+    if (index > 0) parts.push(Buffer.from(',', 'utf8'));
+    parts.push(issueBody(repo, issue));
+  });
+  parts.push(Buffer.from(']', 'utf8'));
+  return Buffer.concat(parts);
+}
+
 function commentJson(repo: Repo, issue: Issue, comment: { id: number; body: string; createdAt: string; updatedAt: string }): Record<string, unknown> {
   return {
     id: comment.id,
@@ -426,7 +471,7 @@ export function handleRest(forge: Forge, ctx: HttpContext): HttpResponse {
           const { items, link } = pageSlice(listed, ctx);
           const headers: Record<string, string> = {};
           if (link) headers['link'] = link;
-          return jsonResponse(200, items.map((issue) => issueJson(repo, issue)), headers);
+          return { status: 200, headers: { 'content-type': 'application/json', ...headers }, body: issueArrayBody(repo, items) };
         }
         if (method === 'POST') {
           const body = parseJsonBody(ctx);
@@ -437,7 +482,7 @@ export function handleRest(forge: Forge, ctx: HttpContext): HttpResponse {
             ? (body['labels'] as unknown[]).filter((item): item is string => typeof item === 'string')
             : [];
           const issue = forge.createIssue(repo, title, bodyText, labelNames);
-          return jsonResponse(201, issueJson(repo, issue));
+          return { status: 201, headers: { 'content-type': 'application/json' }, body: issueBody(repo, issue) };
         }
         return jsonResponse(404, { message: 'Not Found' });
       }
@@ -446,7 +491,7 @@ export function handleRest(forge: Forge, ctx: HttpContext): HttpResponse {
       const issue = forge.getIssue(repo, issueNumber);
       if (!issue) throw new ForgeError(404, 'Not Found');
       if (tail.length === 2) {
-        if (method === 'GET') return jsonResponse(200, issueJson(repo, issue));
+        if (method === 'GET') return { status: 200, headers: { 'content-type': 'application/json' }, body: issueBody(repo, issue) };
         if (method === 'PATCH') {
           const body = parseJsonBody(ctx);
           if (body['state'] === 'closed' || body['state'] === 'open') {
@@ -456,7 +501,7 @@ export function handleRest(forge: Forge, ctx: HttpContext): HttpResponse {
           if (typeof body['title'] === 'string') issue.title = body['title'];
           if (typeof body['body'] === 'string') issue.body = body['body'];
           issue.updatedAt = trialNowIso();
-          return jsonResponse(200, issueJson(repo, issue));
+          return { status: 200, headers: { 'content-type': 'application/json' }, body: issueBody(repo, issue) };
         }
         return jsonResponse(404, { message: 'Not Found' });
       }

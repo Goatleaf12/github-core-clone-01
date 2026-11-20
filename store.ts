@@ -68,6 +68,16 @@ export interface CommitMeta {
   message: string;
 }
 
+/** One cached fetch result: the pack bytes plus the shallow lists computed
+ * alongside them, and the key of the shallow-relevant request inputs they
+ * were computed from (see git.ts buildFetchPack). */
+export interface PackCacheEntry {
+  pack: Buffer;
+  shallow: string[];
+  unshallow: string[];
+  shallowKey: string;
+}
+
 export interface Repo {
   id: number;
   owner: string;
@@ -81,10 +91,12 @@ export interface Repo {
   commitMeta: Map<string, CommitMeta>;
   issues: Issue[];
   pulls: Pull[];
+  issueByNumber: Map<number, Issue>;
+  pullByNumber: Map<number, Pull>;
   labels: Map<string, Label>;
   nextIssue: number;
   nextPull: number;
-  packCache: Map<string, Buffer>;
+  packCache: Map<string, PackCacheEntry>;
 }
 
 export class ForgeError extends Error {
@@ -128,6 +140,8 @@ export class Forge {
       commitMeta: new Map(),
       issues: [],
       pulls: [],
+      issueByNumber: new Map(),
+      pullByNumber: new Map(),
       labels: new Map(),
       nextIssue: 1,
       nextPull: 1,
@@ -224,8 +238,19 @@ export class Forge {
 
   // ---------------------------------------------------------- trees
 
-  /** Parse a tree object into its entries: mode, name, oid. */
+  /**
+   * Parse a tree object into its entries: mode, name, oid.
+   *
+   * Tree object bytes are immutable (an object id names its content forever),
+   * so a parse is cached on the data Buffer itself in a WeakMap: repeat walks
+   * over the same history — every fetch, every contents read — reuse the one
+   * parse instead of re-slicing the same bytes. Callers only read the entries.
+   */
+  private treeParseCache = new WeakMap<Buffer, Array<{ mode: string; name: string; oid: string }>>();
+
   parseTree(data: Buffer): Array<{ mode: string; name: string; oid: string }> {
+    const cached = this.treeParseCache.get(data);
+    if (cached) return cached;
     const entries: Array<{ mode: string; name: string; oid: string }> = [];
     let offset = 0;
     while (offset < data.length) {
@@ -239,6 +264,7 @@ export class Forge {
       entries.push({ mode, name, oid });
       offset = nul + 21;
     }
+    this.treeParseCache.set(data, entries);
     return entries;
   }
 
@@ -839,11 +865,12 @@ export class Forge {
     this.nextIssueId += 1;
     repo.nextIssue += 1;
     repo.issues.push(issue);
+    repo.issueByNumber.set(issue.number, issue);
     return issue;
   }
 
   getIssue(repo: Repo, number: number): Issue | undefined {
-    return repo.issues.find((issue) => issue.number === number);
+    return repo.issueByNumber.get(number);
   }
 
   listIssues(repo: Repo, state: string, direction: string): Issue[] {
@@ -891,11 +918,12 @@ export class Forge {
     this.nextIssueId += 1;
     repo.nextPull += 1;
     repo.pulls.push(pull);
+    repo.pullByNumber.set(pull.number, pull);
     return pull;
   }
 
   getPull(repo: Repo, number: number): Pull | undefined {
-    return repo.pulls.find((pull) => pull.number === number);
+    return repo.pullByNumber.get(number);
   }
 
   listPulls(repo: Repo, state: string): Pull[] {

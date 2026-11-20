@@ -50,9 +50,19 @@ export function b64urlDecode(text: string): string {
  * The one timestamp the whole store stamps on created/updated rows. The trial
  * sets MAKEFUN_TRIAL_NOW; outside a trial a fixed constant keeps every reply
  * deterministic. Never Date.now() here.
+ *
+ * The result is a pure function of the env value, so it is memoized on that
+ * value: the env read itself is the only cost worth paying per call, and only
+ * until the value is seen once.
  */
+let trialNowCache: { raw: string | undefined; iso: string } | undefined;
+
 export function trialNowIso(): string {
-  return process.env.MAKEFUN_TRIAL_NOW ?? '2025-01-01T00:00:00.000Z';
+  const raw = process.env.MAKEFUN_TRIAL_NOW;
+  if (trialNowCache && trialNowCache.raw === raw) return trialNowCache.iso;
+  const iso = raw ?? '2025-01-01T00:00:00.000Z';
+  trialNowCache = { raw, iso };
+  return iso;
 }
 
 /** A JSON-safe deep clone through stringify/parse (inputs are plain data). */

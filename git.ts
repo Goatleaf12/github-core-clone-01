@@ -216,15 +216,27 @@ function parseFetchLines(lines: string[]): FetchRequest {
 
 function buildFetchPack(forge: Forge, repo: Repo, request: FetchRequest): { pack: Buffer; shallow: string[]; unshallow: string[] } {
   const key = JSON.stringify({ w: [...request.wants].sort(), h: [...request.haves].sort(), d: request.depth ?? null });
+  // The shallow lists depend on more than the pack key: the client's existing
+  // shallow boundaries and any deepen modifiers. They are cached alongside
+  // the pack, keyed by exactly those inputs, and reused only when they match;
+  // any other shape takes the recompute path, as before.
+  const shallowKey = JSON.stringify({
+    s: [...request.shallow].sort(),
+    since: request.deepenSince ?? null,
+    not: [...request.deepenNot].sort(),
+  });
   const cached = repo.packCache.get(key);
   if (cached) {
-    // Recompute the shallow lists (cheap) but reuse the pack bytes.
+    if (cached.shallowKey === shallowKey) {
+      return { pack: cached.pack, shallow: cached.shallow, unshallow: cached.unshallow };
+    }
+    // Recompute the shallow lists but reuse the pack bytes.
     const { shallow, unshallow } = forge.reachableObjects(repo, request.wants, request.haves, request.depth, request.shallow);
-    return { pack: cached, shallow, unshallow };
+    return { pack: cached.pack, shallow, unshallow };
   }
   const { objects, shallow, unshallow } = forge.reachableObjects(repo, request.wants, request.haves, request.depth, request.shallow);
   const pack = forge.buildPack(objects);
-  repo.packCache.set(key, pack);
+  repo.packCache.set(key, { pack, shallow, unshallow, shallowKey });
   return { pack, shallow, unshallow };
 }
 
